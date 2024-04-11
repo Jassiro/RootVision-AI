@@ -1,30 +1,14 @@
-from PyQt5.QtWidgets import QMessageBox
-from model import DatabaseManager
+from model import RootAnalyzer
 
-class LoginController:
-    def __init__(self, model, view):
-        self.model = model
-        self.view = view
-        self.view.login_command = self.login
-        self.view.register_command = self.register
+class Controller:
+    def __init__(self):
+        self.model = RootAnalyzer()
 
-    def login(self):
-        username = self.view.get_username()
-        password = self.view.get_password()
-        if username and password:
-            user = self.model.verify_user(username, password)
-            if user:
-                QMessageBox.information(None, 'Success', 'Login successful!')
-            else:
-                QMessageBox.critical(None, 'Error', 'Invalid username or password.')
-        else:
-            QMessageBox.critical(None, 'Error', 'Username and password are required.')
+    def load_image(self, image_path):
+        self.model.load_image(image_path)
 
-    def register(self):
-        username = self.view.get_username()
-        password = self.view.get_password()
-        if username and password:
-            self.model.register_user(username, password)
-            QMessageBox.information(None, 'Success', 'Registration successful!')
-        else:
-            QMessageBox.critical(None, 'Error', 'Username and password are required.')
+    def measure_roots(self):
+        self.model.measure_roots()
+
+    def display_results(self):
+        self.model.display_results()
