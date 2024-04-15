@@ -1,14 +1,18 @@
-from model import RootAnalyzer
+import tkinter as tk
+from view import LoginView , RootMeasurementView
+import os
 
-class Controller:
-    def __init__(self):
-        self.model = RootAnalyzer()
+def login_success():
+    # Close the login window and open the main application window
+    login_window.destroy()
+    root = tk.Tk()
+    view = RootMeasurementView(root)
+    icon_path = "./roots.png"
+    if os.path.exists(icon_path):
+        root.iconphoto(True, tk.PhotoImage(file=icon_path))
+    root.mainloop()
 
-    def load_image(self, image_path):
-        self.model.load_image(image_path)
-
-    def measure_roots(self):
-        self.model.measure_roots()
-
-    def display_results(self):
-        self.model.display_results()
+# Create a Tkinter window for login
+login_window = tk.Tk()
+login_view = LoginView(login_window, login_success)
+login_window.mainloop()
