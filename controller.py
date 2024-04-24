@@ -13,6 +13,8 @@ def login_success():
     root.mainloop()
 
 # Create a Tkinter window for login
+icon_path = "./roots.png"
 login_window = tk.Tk()
+login_window.iconphoto(True, tk.PhotoImage(file=icon_path))
 login_view = LoginView(login_window, login_success)
 login_window.mainloop()

@@ -10,8 +10,13 @@ class RootAnalyzer:
         self.threshold=180
         self.total_length = 0
 
-    def load_image(self, image_path):
-        self.image = cv2.imread(image_path)
+    def load_image(self, image_path_or_image):
+        if isinstance(image_path_or_image, str):  # If input is a path
+            image_path = image_path_or_image
+            self.image = cv2.imread(image_path)
+        else:  # If input is an Image object
+            image = np.array(image_path_or_image)
+            self.image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
     
     def fix_threshold(self, seuil):
        
