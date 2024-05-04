@@ -3,9 +3,7 @@ from tkinter import ttk
 from tkinter import filedialog, messagebox, simpledialog
 from PIL import Image, ImageTk, ImageGrab
 import os
-import cv2
 import sqlite3
-import io
 import numpy as np
 from model import RootAnalyzer
 import re
@@ -14,8 +12,9 @@ from email.mime.text import MIMEText
 import random
 import string
 from datetime import datetime
-import base64
-
+import pandas as pd
+import openpyxl
+from openpyxl import load_workbook
 class RootMeasurementView:
     def __init__(self, root, user):
         self.root = root
@@ -171,6 +170,9 @@ class RootMeasurementView:
                     # Measure roots and get the Tkinter image with contours
                     self.root_analyzer.load_image(image)
                     root_measurements, processed_image = self.root_analyzer.measure_roots_m()
+                    total_length=sum(length*self.ratio for i,length in root_measurements)
+                    formatted_length = "{:.2f}".format(total_length)
+                    messagebox.showinfo("Total length ",f"Total length of roots:\n {formatted_length} cm")
 
                     # Update the image label with the new image
                     self.display_image_with_contours(processed_image, root_measurements)
@@ -178,7 +180,7 @@ class RootMeasurementView:
                     # Update the table with root measurements
                     self.update_table(root_measurements)
                     # Save processed image and table data in the database
-                    #self.save_to_database(processed_image, root_measurements)
+                    self.save_to_database(processed_image, root_measurements)
                     
                 except ValueError as e:
                     if "threshold" in str(e):
@@ -190,12 +192,33 @@ class RootMeasurementView:
             messagebox.showerror("Not calibrated ", "No calibration is done !")
     
     def save_to_database(self, processed_image, root_measurements):
-        # Specify the directory path to save the images
+        # Specify the directory paths
         image_directory = "processed_images"
+        excel_directory = "saved_measurements"
+        excel_file = "root_measurements.xlsx"
 
-        # Create the directory if it doesn't exist
+        # Create the directories if they don't exist
         if not os.path.exists(image_directory):
             os.makedirs(image_directory)
+        if not os.path.exists(excel_directory):
+            os.makedirs(excel_directory)
+            print("Created directory:", excel_directory)
+            
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+
+        # Save the processed image to a file in the specified directory
+        image_filename = f"{self.user}_{timestamp}.png"
+        image_path = os.path.join(image_directory, image_filename)
+
+        # Convert Tkinter PhotoImage to a canvas
+        canvas_width, canvas_height = processed_image.width(), processed_image.height()
+        canvas = tk.Canvas(self.root, width=canvas_width, height=canvas_height)
+        canvas.create_image((canvas_width, canvas_height), image=processed_image)
+        canvas.update() 
+
+        # Save canvas as PNG image
+        canvas_img = ImageGrab.grab(bbox=(canvas.winfo_rootx(), canvas.winfo_rooty(), canvas.winfo_rootx() + canvas_width*1.4, canvas.winfo_rooty() + canvas_height*1.4))
+        canvas_img.save(image_path, 'PNG')
 
         # Connect to the SQLite database
         self.conn = sqlite3.connect('users.db')
@@ -203,7 +226,6 @@ class RootMeasurementView:
 
         # Get current user's username
         username = self.user 
-
         # SQL statements to create tables if they do not exist
         processed_image_table_sql = """
         CREATE TABLE IF NOT EXISTS processed_images_table (
@@ -215,7 +237,7 @@ class RootMeasurementView:
         """
 
         root_measurements_table_sql = """
-        CREATE TABLE IF NOT EXISTS roots_measurements_tabl (
+        CREATE TABLE IF NOT EXISTS roots_measurements_table (
             id INTEGER PRIMARY KEY,
             username TEXT,
             measurement_index INTEGER,
@@ -233,63 +255,57 @@ class RootMeasurementView:
         except sqlite3.Error as e:
             print("Error creating tables:", e)
 
-        # Save the processed image to a file in the specified directory
-        image_filename = f"{username}_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
-        image_path = os.path.join(image_directory, image_filename)
-
-        # Convert Tkinter PhotoImage to a canvas
-        canvas_width, canvas_height = processed_image.width(), processed_image.height()
-        canvas = tk.Canvas(self.root, width=canvas_width, height=canvas_height)
-        canvas.create_image((canvas_width, canvas_height), image=processed_image)
-        canvas.update()
-
-        # Save canvas as PNG image
-        canvas_img = ImageGrab.grab(bbox=(canvas.winfo_rootx(), canvas.winfo_rooty(), canvas.winfo_rootx() + canvas_width*1.3, canvas.winfo_rooty() + canvas_height*1.3))
-        canvas_img.save(image_path, 'PNG')
-
-        # Insert image path and table data into the database with timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # Insert image path into the database
         cur.execute("INSERT INTO processed_images_table (username, image_path, timestamp) VALUES (?, ?, ?)",
                     (str(username), image_path, timestamp))
 
         # Insert root measurements into the database
-        # Insert root measurements into the database
         for index, (contour_array, length) in enumerate(root_measurements, start=1):
             # Save contour_array and length to the database
             cur.execute("INSERT INTO roots_measurements_table (username, measurement_index, length, timestamp) VALUES (?, ?, ?, ?)",
-                        (username, index, length, timestamp))
-
-        # Commit changes to the database
+                        (str(username), index, round(length, 2)*self.ratio, timestamp))
+            
         self.conn.commit()
 
-    
-    def check_saved_data(self):
-        try:
-            # Connect to the database
-            conn = sqlite3.connect('users.db')
-            cur = conn.cursor()
+        # Extract data from root measurements
+        data = {"Time":[],"Measurement Index": [], "Length": [], 'Image path':[]}
+        for index, (contour_array, length) in enumerate(root_measurements, start=1):
+            data["Measurement Index"].append(index)
+            data["Length"].append("{:.2f}".format(length*self.ratio))
+            data["Time"].append(timestamp)
+            data["Image path"].append(image_path)
+        
+        # Create a DataFrame from the extracted data
+        df = pd.DataFrame(data)
+        
+        # Create a DataFrame for the separator
+        sep = pd.DataFrame({"Time":["-"],"Measurement Index": ["-"], "Length": ["-"],"Image path":["-"]})
+        
+        # Commit changes to the database
+        excel_file = "root_measurements.xlsx"
+        # Export the DataFrame to an Excel file in the specified directory
+        excel_path = os.path.join(excel_directory, excel_file)
 
-            # Execute a query to retrieve the saved data
-            cur.execute("SELECT * FROM processed_image_table")
-            processed_images = cur.fetchall()
+        # Create the Excel file if it doesn't exist
+        if not os.path.exists(excel_path):
+            df.to_excel(excel_path, index=False)
+        else:
+            # Load the existing workbook
+            wb = load_workbook(excel_path)
+            ws = wb.active
 
-            cur.execute("SELECT * FROM root_measurements_table")
-            root_measurements = cur.fetchall()
+            # Add a row of separators
+            ws.append(["-", "-", "-", "-"])
 
-            # Print or process the retrieved data
-            print("Processed Images:")
-            for row in processed_images:
-                print(row)
+            # Add the new data to the worksheet
+            for row in df.values:
+                ws.append(list(row))
 
-            print("\nRoot Measurements:")
-            for row in root_measurements:
-                print(row)
+            # Save the changes
+            wb.save(excel_path)
 
-            # Close the database connection
-            conn.close()
-        except sqlite3.Error as e:
-            print("Error retrieving data from database:", e)
+
+
 
     def __del__(self):
         # Close the database connection when the object is destroyed
@@ -752,7 +768,7 @@ class CalibrationView:
         self.first_update = True
 
     def load_image(self):
-        image_path = filedialog.askopenfilename(initialdir="/", title="Select Image",parent=self.root)
+        image_path = filedialog.askopenfilename(initialdir="/", title="Select Image",parent=self.root)#home/hdfixi/Documents/roots-length/src/pfe_jasser
         if image_path:
             # Check if the file is an image
             try:
@@ -819,7 +835,7 @@ class CalibrationView:
 
 # def login_success():
 #     # Close the login window and open the main application window
-#     user=login_view.get_current_user_username
+#     user=login_view.get_current_user_username()
 #     login_window.destroy()
 #     root = tk.Tk()
 #     view = RootMeasurementView(root,user)
