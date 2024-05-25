@@ -63,6 +63,10 @@ class RootMeasurementView:
                                      width=15, height=2)  # Bind open_image_cropper function
         self.reset_crop_button.pack(fill="x", pady=5)
 
+        self.reset_crop_button = tk.Button(self.button_frame, text="Save", command=self.save,
+                                     width=15, height=2)  # Bind open_image_cropper function
+        self.reset_crop_button.pack(fill="x", pady=5)
+
         self.image_label = tk.Label(self.main_frame)
         self.image_label.pack(side="left", fill="both", expand=True)
 
@@ -85,6 +89,9 @@ class RootMeasurementView:
         self.thershold_modified = True
         self.cropped_image = None
         self.conn = None
+        self.is_image_processed = False
+        self.root_measurements = None
+        self.processed_image = None
     def open_image_cropper(self):
         # Check if an image is loaded
         if self.image:
@@ -168,8 +175,11 @@ class RootMeasurementView:
 
                 try:
                     # Measure roots and get the Tkinter image with contours
+                    self.is_image_processed = True
                     self.root_analyzer.load_image(image)
                     root_measurements, processed_image = self.root_analyzer.measure_roots_m()
+                    self.root_measurements = root_measurements
+                    self.processed_image = processed_image
                     total_length=sum(length*self.ratio for i,length in root_measurements)
                     formatted_length = "{:.2f}".format(total_length)
                     messagebox.showinfo("Total length ",f"Total length of roots:\n {formatted_length} cm")
@@ -180,7 +190,7 @@ class RootMeasurementView:
                     # Update the table with root measurements
                     self.update_table(root_measurements)
                     # Save processed image and table data in the database
-                    self.save_to_database(processed_image, root_measurements)
+                    #self.save_to_database(processed_image, root_measurements)
                     
                 except ValueError as e:
                     if "threshold" in str(e):
@@ -192,6 +202,8 @@ class RootMeasurementView:
             messagebox.showerror("Not calibrated ", "No calibration is done !")
     
     def save_to_database(self, processed_image, root_measurements):
+        if not self.is_image_processed and self.image != None:
+                messagebox.showerror("No Image was processed", "Please process an image first")
         # Specify the directory paths
         image_directory = "processed_images"
         excel_directory = "saved_measurements"
@@ -303,7 +315,8 @@ class RootMeasurementView:
 
             # Save the changes
             wb.save(excel_path)
-
+    def save(self):
+        self.save_to_database(self.processed_image,self.root_measurements)
 
 
 
